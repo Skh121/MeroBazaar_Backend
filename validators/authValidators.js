@@ -28,4 +28,44 @@ const loginSchema = z.object({
     .min(1, "Password is required"),
 });
 
-module.exports = { registerSchema, loginSchema };
+const forgotPasswordSchema = z.object({
+  email: z
+    .string({ required_error: "Email is required" })
+    .email("Please provide a valid email address")
+    .toLowerCase()
+    .trim(),
+});
+
+const verifyOTPSchema = z.object({
+  email: z
+    .string({ required_error: "Email is required" })
+    .email("Please provide a valid email address")
+    .toLowerCase()
+    .trim(),
+  otp: z
+    .string({ required_error: "OTP is required" })
+    .length(6, "OTP must be 6 digits"),
+});
+
+const resetPasswordSchema = z.object({
+  email: z
+    .string({ required_error: "Email is required" })
+    .email("Please provide a valid email address")
+    .toLowerCase()
+    .trim(),
+  otp: z
+    .string({ required_error: "OTP is required" })
+    .length(6, "OTP must be 6 digits"),
+  newPassword: z
+    .string({ required_error: "New password is required" })
+    .min(8, "Password must be at least 8 characters")
+    .max(128, "Password must not exceed 128 characters"),
+});
+
+module.exports = {
+  registerSchema,
+  loginSchema,
+  forgotPasswordSchema,
+  verifyOTPSchema,
+  resetPasswordSchema,
+};
