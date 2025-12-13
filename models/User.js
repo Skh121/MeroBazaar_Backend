@@ -26,6 +26,14 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  otp: {
+    type: String,
+    default: null,
+  },
+  otpExpiry: {
+    type: Date,
+    default: null,
+  },
 });
 
 // Method to compare entered password with hashed password in DB
