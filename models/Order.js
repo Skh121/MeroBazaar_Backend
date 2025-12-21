@@ -75,7 +75,14 @@ const orderSchema = new mongoose.Schema(
     },
     orderStatus: {
       type: String,
-      enum: ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"],
+      enum: [
+        "pending",
+        "confirmed",
+        "processing",
+        "shipped",
+        "delivered",
+        "cancelled",
+      ],
       default: "pending",
     },
     subtotal: {
@@ -93,6 +100,13 @@ const orderSchema = new mongoose.Schema(
     total: {
       type: Number,
       required: true,
+    },
+    // eSewa payment fields
+    transactionUuid: {
+      type: String,
+    },
+    transactionCode: {
+      type: String,
     },
   },
   {
