@@ -3,6 +3,7 @@ const path = require("path");
 require("dotenv").config();
 const cors = require("cors");
 const morgan = require("morgan");
+const cookieParser = require("cookie-parser");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const vendorRoutes = require("./routes/vendorRoutes");
@@ -15,6 +16,7 @@ const cartRoutes = require("./routes/cartRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const analyticsRoutes = require("./routes/analyticsRoutes");
 
 // Connect to database
 connectDB();
@@ -22,8 +24,14 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(cors()); // Allows cross-origin requests from the frontend
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true, // Allow cookies
+  })
+);
 app.use(express.json()); // Body parser for JSON data
+app.use(cookieParser()); // Parse cookies for session tracking
 app.use(morgan("dev")); // HTTP request logger
 
 // Serve static files from uploads directory
@@ -41,6 +49,7 @@ app.use("/api/cart", cartRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Simple welcome route
 app.get("/", (req, res) => {

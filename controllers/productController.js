@@ -113,13 +113,18 @@ const updateProduct = asyncHandler(async (req, res) => {
   product.name = name || product.name;
   product.description = description || product.description;
   product.price = price !== undefined ? price : product.price;
-  product.comparePrice = comparePrice !== undefined ? comparePrice : product.comparePrice;
+  product.comparePrice =
+    comparePrice !== undefined ? comparePrice : product.comparePrice;
   product.category = category || product.category;
   product.images = images || product.images;
   product.stock = stock !== undefined ? stock : product.stock;
   product.unit = unit || product.unit;
-  product.isFeatured = isFeatured !== undefined ? isFeatured : product.isFeatured;
-  product.isRegionalSpecialty = isRegionalSpecialty !== undefined ? isRegionalSpecialty : product.isRegionalSpecialty;
+  product.isFeatured =
+    isFeatured !== undefined ? isFeatured : product.isFeatured;
+  product.isRegionalSpecialty =
+    isRegionalSpecialty !== undefined
+      ? isRegionalSpecialty
+      : product.isRegionalSpecialty;
   product.badge = badge !== undefined ? badge : product.badge;
   product.status = status || product.status;
   product.tags = tags || product.tags;
@@ -178,16 +183,60 @@ const getVendorProductById = asyncHandler(async (req, res) => {
 // @route   GET /api/products
 // @access  Public
 const getAllProducts = asyncHandler(async (req, res) => {
-  const { category, search, page = 1, limit = 12, sort = "createdAt" } = req.query;
+  const {
+    category,
+    search,
+    page = 1,
+    limit = 12,
+    sort = "createdAt",
+    minPrice,
+    maxPrice,
+    minRating,
+  } = req.query;
+
+  // Map frontend category slugs to database category names
+  const categoryMap = {
+    "food-spices": "Food & Spices",
+    textiles: "Textiles",
+    handicrafts: "Handicrafts",
+    agriculture: "Agriculture",
+    "dairy-cheese": "Dairy & Cheese",
+    others: "Others",
+  };
 
   let query = { status: "active" };
 
-  if (category) {
-    query.category = category;
+  // Category filter with slug mapping
+  if (category && category !== "all") {
+    const mappedCategory = categoryMap[category] || category;
+    query.category = mappedCategory;
   }
 
+  // Search filter
   if (search) {
-    query.$text = { $search: search };
+    // Use regex for partial/prefix matching instead of $text search
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { name: { $regex: searchRegex } },
+      { description: { $regex: searchRegex } },
+      { tags: { $regex: searchRegex } },
+    ];
+  }
+
+  // Price range filter
+  if (minPrice || maxPrice) {
+    query.price = {};
+    if (minPrice) {
+      query.price.$gte = parseFloat(minPrice);
+    }
+    if (maxPrice) {
+      query.price.$lte = parseFloat(maxPrice);
+    }
+  }
+
+  // Rating filter
+  if (minRating && minRating !== "all") {
+    query.rating = { $gte: parseFloat(minRating) };
   }
 
   let sortOption = {};

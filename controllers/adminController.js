@@ -34,7 +34,9 @@ const getPendingVendors = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/vendors/:id
 // @access  Private (Admin)
 const getVendorById = asyncHandler(async (req, res) => {
-  const vendor = await Vendor.findById(req.params.id).select("-password -otp -otpExpiry");
+  const vendor = await Vendor.findById(req.params.id).select(
+    "-password -otp -otpExpiry"
+  );
 
   if (vendor) {
     res.json(vendor);

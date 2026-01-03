@@ -21,8 +21,15 @@ const {
   markReviewHelpful,
 } = require("../controllers/reviewController");
 const { protect, protectVendor } = require("../middleware/authMiddleware");
+const {
+  trackingContext,
+  trackProductView,
+} = require("../middleware/trackingMiddleware");
 
 const router = express.Router();
+
+// Apply tracking context to all product routes
+router.use(trackingContext);
 
 // ============ PUBLIC ROUTES ============
 // These must come before parameterized routes to avoid conflicts
@@ -77,7 +84,7 @@ router.post("/:id/reviews/:reviewId/helpful", markReviewHelpful);
 // ============ PUBLIC SINGLE PRODUCT ============
 // This must be last as it catches all /:id patterns
 
-// Get single product by ID (public)
-router.get("/:id", getProductById);
+// Get single product by ID (public) - with server-side view tracking
+router.get("/:id", trackProductView, getProductById);
 
 module.exports = router;
