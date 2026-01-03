@@ -28,14 +28,18 @@ const registerVendor = asyncHandler(async (req, res) => {
   // Check if vendor already exists with email
   const vendorExistsByEmail = await Vendor.findOne({ email });
   if (vendorExistsByEmail) {
-    res.status(400).json({ message: "A vendor already exists with this email address." });
+    res
+      .status(400)
+      .json({ message: "A vendor already exists with this email address." });
     return;
   }
 
   // Check if vendor already exists with PAN number
   const vendorExistsByPAN = await Vendor.findOne({ panNumber });
   if (vendorExistsByPAN) {
-    res.status(400).json({ message: "A vendor already exists with this PAN number." });
+    res
+      .status(400)
+      .json({ message: "A vendor already exists with this PAN number." });
     return;
   }
 
@@ -61,7 +65,8 @@ const registerVendor = asyncHandler(async (req, res) => {
       ownerName: vendor.ownerName,
       email: vendor.email,
       status: vendor.status,
-      message: "Registration successful! Your application is pending admin approval.",
+      message:
+        "Registration successful! Your application is pending admin approval.",
     });
   } else {
     res.status(400).json({ message: "Invalid vendor data provided." });
@@ -91,7 +96,8 @@ const authVendor = asyncHandler(async (req, res) => {
   // Check vendor status
   if (vendor.status === "pending") {
     res.status(403).json({
-      message: "Your account is pending approval. Please wait for admin verification.",
+      message:
+        "Your account is pending approval. Please wait for admin verification.",
       status: "pending",
     });
     return;
@@ -108,7 +114,8 @@ const authVendor = asyncHandler(async (req, res) => {
 
   if (vendor.status === "suspended") {
     res.status(403).json({
-      message: "Your vendor account has been suspended. Please contact support.",
+      message:
+        "Your vendor account has been suspended. Please contact support.",
       status: "suspended",
       reason: vendor.adminNotes,
     });

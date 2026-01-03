@@ -8,7 +8,8 @@ const Product = require("../models/Product");
 const getWishlist = asyncHandler(async (req, res) => {
   let wishlist = await Wishlist.findOne({ user: req.user._id }).populate({
     path: "products",
-    select: "name price comparePrice images rating reviewCount category vendor stock",
+    select:
+      "name price comparePrice images rating reviewCount category vendor stock",
     populate: {
       path: "vendor",
       select: "businessName",
@@ -51,7 +52,8 @@ const addToWishlist = asyncHandler(async (req, res) => {
   // Populate and return updated wishlist
   wishlist = await Wishlist.findOne({ user: req.user._id }).populate({
     path: "products",
-    select: "name price comparePrice images rating reviewCount category vendor stock",
+    select:
+      "name price comparePrice images rating reviewCount category vendor stock",
     populate: {
       path: "vendor",
       select: "businessName",
@@ -80,9 +82,12 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
   await wishlist.save();
 
   // Populate and return updated wishlist
-  const updatedWishlist = await Wishlist.findOne({ user: req.user._id }).populate({
+  const updatedWishlist = await Wishlist.findOne({
+    user: req.user._id,
+  }).populate({
     path: "products",
-    select: "name price comparePrice images rating reviewCount category vendor stock",
+    select:
+      "name price comparePrice images rating reviewCount category vendor stock",
     populate: {
       path: "vendor",
       select: "businessName",

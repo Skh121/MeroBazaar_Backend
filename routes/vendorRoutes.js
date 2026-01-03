@@ -6,7 +6,10 @@ const {
   updateVendorProfile,
 } = require("../controllers/vendorController");
 const validate = require("../middleware/validate");
-const { vendorRegisterSchema, vendorLoginSchema } = require("../validators/vendorValidators");
+const {
+  vendorRegisterSchema,
+  vendorLoginSchema,
+} = require("../validators/vendorValidators");
 const { protectVendor } = require("../middleware/authMiddleware");
 
 const router = express.Router();
