@@ -103,7 +103,9 @@ const updateCartItem = asyncHandler(async (req, res) => {
   }
 
   if (quantity <= 0) {
-    cart.items = cart.items.filter((item) => item.product.toString() !== productId);
+    cart.items = cart.items.filter(
+      (item) => item.product.toString() !== productId
+    );
   } else {
     item.quantity = quantity;
   }
@@ -136,7 +138,9 @@ const removeFromCart = asyncHandler(async (req, res) => {
     throw new Error("Cart not found");
   }
 
-  cart.items = cart.items.filter((item) => item.product.toString() !== productId);
+  cart.items = cart.items.filter(
+    (item) => item.product.toString() !== productId
+  );
   await cart.save();
 
   // Populate and return updated cart
@@ -171,7 +175,9 @@ const clearCart = asyncHandler(async (req, res) => {
 // @access  Private
 const getCartCount = asyncHandler(async (req, res) => {
   const cart = await Cart.findOne({ user: req.user._id });
-  const count = cart ? cart.items.reduce((total, item) => total + item.quantity, 0) : 0;
+  const count = cart
+    ? cart.items.reduce((total, item) => total + item.quantity, 0)
+    : 0;
   res.json({ count });
 });
 

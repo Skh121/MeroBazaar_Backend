@@ -20,7 +20,8 @@ const submitContactMessage = asyncHandler(async (req, res) => {
   });
 
   res.status(201).json({
-    message: "Your message has been sent successfully. We will get back to you soon!",
+    message:
+      "Your message has been sent successfully. We will get back to you soon!",
     contact: {
       _id: contact._id,
       fullName: contact.fullName,

@@ -6,7 +6,9 @@ const bcrypt = require("bcryptjs");
 // @route   GET /api/users/profile
 // @access  Private
 const getUserProfile = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).select("-password -otp -otpExpiry");
+  const user = await User.findById(req.user._id).select(
+    "-password -otp -otpExpiry"
+  );
 
   if (!user) {
     res.status(404);

@@ -35,7 +35,10 @@ const cartSchema = new mongoose.Schema(
 
 // Virtual for total price
 cartSchema.virtual("totalPrice").get(function () {
-  return this.items.reduce((total, item) => total + item.price * item.quantity, 0);
+  return this.items.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0
+  );
 });
 
 // Virtual for total items count

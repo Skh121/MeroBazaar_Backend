@@ -63,7 +63,7 @@ const protectVendor = asyncHandler(async (req, res, next) => {
       if (req.vendor.status !== "approved") {
         res.status(403).json({
           message: "Your vendor account is not yet approved",
-          status: req.vendor.status
+          status: req.vendor.status,
         });
         return;
       }
