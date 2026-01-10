@@ -1,6 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const jwt = require("jsonwebtoken");
 const Vendor = require("../models/Vendor");
+const { sendNewVendorNotification } = require("../services/emailService");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -59,6 +60,9 @@ const registerVendor = asyncHandler(async (req, res) => {
   });
 
   if (vendor) {
+    // Send notification to admin about new vendor application
+    sendNewVendorNotification(vendor);
+
     res.status(201).json({
       _id: vendor._id,
       businessName: vendor.businessName,
@@ -158,9 +162,14 @@ const updateVendorProfile = asyncHandler(async (req, res) => {
   const vendor = await Vendor.findById(req.vendor._id);
 
   if (vendor) {
+    // Update allowed fields
     vendor.businessName = req.body.businessName || vendor.businessName;
+    vendor.ownerName = req.body.ownerName || vendor.ownerName;
     vendor.phone = req.body.phone || vendor.phone;
     vendor.address = req.body.address || vendor.address;
+    vendor.province = req.body.province || vendor.province;
+    vendor.district = req.body.district || vendor.district;
+    vendor.category = req.body.category || vendor.category;
 
     const updatedVendor = await vendor.save();
 
@@ -169,8 +178,12 @@ const updateVendorProfile = asyncHandler(async (req, res) => {
       businessName: updatedVendor.businessName,
       ownerName: updatedVendor.ownerName,
       email: updatedVendor.email,
+      category: updatedVendor.category,
       phone: updatedVendor.phone,
+      province: updatedVendor.province,
+      district: updatedVendor.district,
       address: updatedVendor.address,
+      panNumber: updatedVendor.panNumber,
       status: updatedVendor.status,
     });
   } else {
@@ -178,9 +191,47 @@ const updateVendorProfile = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Change vendor password
+// @route   PUT /api/vendor/password
+// @access  Private (Vendor)
+const changeVendorPassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    res.status(400);
+    throw new Error("Please provide current and new password");
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400);
+    throw new Error("New password must be at least 6 characters");
+  }
+
+  const vendor = await Vendor.findById(req.vendor._id);
+
+  if (!vendor) {
+    res.status(404);
+    throw new Error("Vendor not found");
+  }
+
+  // Verify current password
+  const isMatch = await vendor.matchPassword(currentPassword);
+  if (!isMatch) {
+    res.status(401);
+    throw new Error("Current password is incorrect");
+  }
+
+  // Update password
+  vendor.password = newPassword;
+  await vendor.save();
+
+  res.json({ message: "Password updated successfully" });
+});
+
 module.exports = {
   registerVendor,
   authVendor,
   getVendorProfile,
   updateVendorProfile,
+  changeVendorPassword,
 };

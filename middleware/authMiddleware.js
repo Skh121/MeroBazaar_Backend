@@ -26,6 +26,17 @@ const protect = asyncHandler(async (req, res, next) => {
         return;
       }
 
+      // Check if user account is suspended
+      if (req.user.status === "suspended") {
+        res.status(403).json({
+          message: "Your account has been suspended. Please contact support.",
+          suspended: true,
+          reason:
+            req.user.suspendReason || "Account suspended by administrator",
+        });
+        return;
+      }
+
       next();
     } catch (error) {
       res.status(401).json({ message: "Not authorized, token failed" });

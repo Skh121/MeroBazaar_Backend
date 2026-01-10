@@ -16,7 +16,16 @@ const userEventSchema = new mongoose.Schema(
     eventType: {
       type: String,
       required: true,
-      enum: ["view", "click", "add_to_cart", "remove_from_cart", "purchase", "search", "wishlist_add", "wishlist_remove"],
+      enum: [
+        "view",
+        "click",
+        "add_to_cart",
+        "remove_from_cart",
+        "purchase",
+        "search",
+        "wishlist_add",
+        "wishlist_remove",
+      ],
       index: true,
     },
     product: {
@@ -120,7 +129,10 @@ userProductInteractionSchema.methods.calculateScore = function () {
   return this.interactionScore;
 };
 
-const UserProductInteraction = mongoose.model("UserProductInteraction", userProductInteractionSchema);
+const UserProductInteraction = mongoose.model(
+  "UserProductInteraction",
+  userProductInteractionSchema
+);
 
 // Schema for customer segments (RFM analysis results)
 const customerSegmentSchema = new mongoose.Schema(
@@ -174,7 +186,10 @@ customerSegmentSchema.index({ segment: 1 });
 customerSegmentSchema.index({ cluster: 1 });
 customerSegmentSchema.index({ rfmScore: -1 });
 
-const CustomerSegment = mongoose.model("CustomerSegment", customerSegmentSchema);
+const CustomerSegment = mongoose.model(
+  "CustomerSegment",
+  customerSegmentSchema
+);
 
 // Schema for product demand forecasts
 const demandForecastSchema = new mongoose.Schema(
@@ -243,7 +258,16 @@ const dynamicPriceSchema = new mongoose.Schema(
     // Price adjustments
     adjustmentReason: {
       type: String,
-      enum: ["high_demand", "low_demand", "low_inventory", "high_inventory", "seasonal", "competitor", "festival", "clearance"],
+      enum: [
+        "high_demand",
+        "low_demand",
+        "low_inventory",
+        "high_inventory",
+        "seasonal",
+        "competitor",
+        "festival",
+        "clearance",
+      ],
     },
     adjustmentPercentage: { type: Number },
     // Status

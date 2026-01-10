@@ -2,6 +2,10 @@ const asyncHandler = require("express-async-handler");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
+const {
+  sendNewOrderNotification,
+  sendLowStockNotification,
+} = require("../services/emailService");
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -73,16 +77,27 @@ const createOrder = asyncHandler(async (req, res) => {
     orderStatus: "pending",
   });
 
-  // Update product stock
+  // Update product stock and check for low stock
+  const LOW_STOCK_THRESHOLD = 10;
   for (const item of orderItems) {
-    await Product.findByIdAndUpdate(item.product, {
-      $inc: { stock: -item.quantity },
-    });
+    const updatedProduct = await Product.findByIdAndUpdate(
+      item.product,
+      { $inc: { stock: -item.quantity } },
+      { new: true }
+    ).populate("vendor");
+
+    // Send low stock notification if stock falls below threshold
+    if (updatedProduct && updatedProduct.stock <= LOW_STOCK_THRESHOLD) {
+      sendLowStockNotification(updatedProduct, updatedProduct.stock);
+    }
   }
 
   // Clear cart
   cart.items = [];
   await cart.save();
+
+  // Send new order notification to admin
+  sendNewOrderNotification(order);
 
   res.status(201).json(order);
 });
@@ -178,45 +193,197 @@ const getVendorOrders = asyncHandler(async (req, res) => {
   res.json(orders);
 });
 
-// @desc    Get vendor order stats
+// @desc    Get vendor order stats with chart data
 // @route   GET /api/orders/vendor/stats
 // @access  Private (Vendor)
 const getVendorOrderStats = asyncHandler(async (req, res) => {
   const vendorId = req.vendor._id;
+  const { days = 7 } = req.query;
 
   // Get all orders containing vendor's products
-  const orders = await Order.find({ "items.vendor": vendorId });
+  const orders = await Order.find({ "items.vendor": vendorId }).sort({
+    createdAt: -1,
+  });
 
-  // Calculate stats
+  // Calculate basic stats
   let totalRevenue = 0;
   let totalOrders = orders.length;
   let pendingOrders = 0;
+  let processingOrders = 0;
+  let shippedOrders = 0;
   let completedOrders = 0;
+  let cancelledOrders = 0;
+
+  // For revenue chart - daily revenue for past N days
+  const daysAgo = new Date();
+  daysAgo.setDate(daysAgo.getDate() - parseInt(days));
+
+  const revenueByDay = {};
+  const ordersByDay = {};
+
+  // Initialize all days with 0
+  for (let i = 0; i < parseInt(days); i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const dateKey = date.toISOString().split("T")[0];
+    revenueByDay[dateKey] = 0;
+    ordersByDay[dateKey] = 0;
+  }
+
+  // Product sales tracking
+  const productSales = {};
 
   orders.forEach((order) => {
+    const orderDate = new Date(order.createdAt).toISOString().split("T")[0];
+
     // Calculate revenue from vendor's items only
+    let orderVendorRevenue = 0;
     order.items.forEach((item) => {
       if (item.vendor && item.vendor.toString() === vendorId.toString()) {
-        totalRevenue += item.price * item.quantity;
+        const itemRevenue = item.price * item.quantity;
+        totalRevenue += itemRevenue;
+        orderVendorRevenue += itemRevenue;
+
+        // Track product sales
+        const productKey = item.product?.toString() || item.name;
+        if (!productSales[productKey]) {
+          productSales[productKey] = {
+            name: item.name,
+            sales: 0,
+            revenue: 0,
+            quantity: 0,
+          };
+        }
+        productSales[productKey].sales += 1;
+        productSales[productKey].quantity += item.quantity;
+        productSales[productKey].revenue += itemRevenue;
       }
     });
 
-    if (
-      order.orderStatus === "pending" ||
-      order.orderStatus === "confirmed" ||
-      order.orderStatus === "processing"
-    ) {
-      pendingOrders++;
-    } else if (order.orderStatus === "delivered") {
-      completedOrders++;
+    // Add to daily revenue if within the date range
+    if (revenueByDay.hasOwnProperty(orderDate)) {
+      revenueByDay[orderDate] += orderVendorRevenue;
+      ordersByDay[orderDate] += 1;
+    }
+
+    // Count order statuses
+    switch (order.orderStatus) {
+      case "pending":
+      case "confirmed":
+        pendingOrders++;
+        break;
+      case "processing":
+        processingOrders++;
+        break;
+      case "shipped":
+        shippedOrders++;
+        break;
+      case "delivered":
+        completedOrders++;
+        break;
+      case "cancelled":
+        cancelledOrders++;
+        break;
     }
   });
 
+  // Format revenue chart data (sorted by date ascending)
+  const revenueChartData = Object.entries(revenueByDay)
+    .sort(([a], [b]) => new Date(a) - new Date(b))
+    .map(([date, revenue]) => ({
+      date,
+      revenue,
+      orders: ordersByDay[date] || 0,
+      label: new Date(date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+    }));
+
+  // Order status distribution for pie chart
+  const orderStatusData = [
+    { name: "Pending", value: pendingOrders, color: "#F59E0B" },
+    { name: "Processing", value: processingOrders, color: "#3B82F6" },
+    { name: "Shipped", value: shippedOrders, color: "#8B5CF6" },
+    { name: "Delivered", value: completedOrders, color: "#10B981" },
+    { name: "Cancelled", value: cancelledOrders, color: "#EF4444" },
+  ].filter((item) => item.value > 0);
+
+  // Top products by sales
+  const topProducts = Object.values(productSales)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+
+  // Calculate growth (compare this period vs previous period)
+  const previousPeriodStart = new Date(daysAgo);
+  previousPeriodStart.setDate(previousPeriodStart.getDate() - parseInt(days));
+
+  const currentPeriodOrders = orders.filter(
+    (o) => new Date(o.createdAt) >= daysAgo
+  );
+  const previousPeriodOrders = orders.filter((o) => {
+    const orderDate = new Date(o.createdAt);
+    return orderDate >= previousPeriodStart && orderDate < daysAgo;
+  });
+
+  let currentPeriodRevenue = 0;
+  let previousPeriodRevenue = 0;
+
+  currentPeriodOrders.forEach((order) => {
+    order.items.forEach((item) => {
+      if (item.vendor && item.vendor.toString() === vendorId.toString()) {
+        currentPeriodRevenue += item.price * item.quantity;
+      }
+    });
+  });
+
+  previousPeriodOrders.forEach((order) => {
+    order.items.forEach((item) => {
+      if (item.vendor && item.vendor.toString() === vendorId.toString()) {
+        previousPeriodRevenue += item.price * item.quantity;
+      }
+    });
+  });
+
+  const revenueGrowth =
+    previousPeriodRevenue > 0
+      ? (
+          ((currentPeriodRevenue - previousPeriodRevenue) /
+            previousPeriodRevenue) *
+          100
+        ).toFixed(1)
+      : currentPeriodRevenue > 0
+      ? 100
+      : 0;
+
+  const ordersGrowth =
+    previousPeriodOrders.length > 0
+      ? (
+          ((currentPeriodOrders.length - previousPeriodOrders.length) /
+            previousPeriodOrders.length) *
+          100
+        ).toFixed(1)
+      : currentPeriodOrders.length > 0
+      ? 100
+      : 0;
+
   res.json({
+    // Basic stats
     totalRevenue,
     totalOrders,
-    pendingOrders,
+    pendingOrders: pendingOrders + processingOrders,
     completedOrders,
+
+    // Growth metrics
+    revenueGrowth: parseFloat(revenueGrowth),
+    ordersGrowth: parseFloat(ordersGrowth),
+    currentPeriodRevenue,
+    currentPeriodOrders: currentPeriodOrders.length,
+
+    // Chart data
+    revenueChartData,
+    orderStatusData,
+    topProducts,
   });
 });
 

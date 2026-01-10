@@ -280,25 +280,24 @@ const getAllProducts = asyncHandler(async (req, res) => {
 const getFeaturedProducts = asyncHandler(async (req, res) => {
   const { limit = 8 } = req.query;
 
+  // Only get products that are explicitly marked as featured
   const products = await Product.find({ status: "active", isFeatured: true })
     .populate("vendor", "businessName district province")
     .sort({ createdAt: -1 })
     .limit(parseInt(limit));
 
-  // If not enough featured, fill with recent products
-  if (products.length < limit) {
-    const remaining = parseInt(limit) - products.length;
-    const existingIds = products.map((p) => p._id);
-
-    const moreProducts = await Product.find({
+  // Only fill with high-rated products if NO featured products exist at all
+  // and exclude regional specialty products to avoid overlap
+  if (products.length === 0) {
+    const fallbackProducts = await Product.find({
       status: "active",
-      _id: { $nin: existingIds },
+      isRegionalSpecialty: { $ne: true }, // Exclude regional specialty products
     })
       .populate("vendor", "businessName district province")
       .sort({ rating: -1, reviewCount: -1 })
-      .limit(remaining);
+      .limit(parseInt(limit));
 
-    products.push(...moreProducts);
+    return res.json(fallbackProducts);
   }
 
   res.json(products);
@@ -308,33 +307,61 @@ const getFeaturedProducts = asyncHandler(async (req, res) => {
 // @route   GET /api/products/regional
 // @access  Public
 const getRegionalProducts = asyncHandler(async (req, res) => {
-  const { limit = 4, province } = req.query;
+  const { limit = 4, province, district } = req.query;
+  const Vendor = require("../models/Vendor");
 
-  let query = { status: "active", isRegionalSpecialty: true };
+  let vendorFilter = {};
 
+  // If province is specified, first find vendors in that province
   if (province) {
-    query["vendor.province"] = province;
+    vendorFilter.province = province;
+  }
+  if (district) {
+    vendorFilter.district = district;
   }
 
-  const products = await Product.find(query)
+  // Get vendor IDs matching the location filter
+  let vendorIds = [];
+  if (province || district) {
+    const vendors = await Vendor.find(vendorFilter).select("_id");
+    vendorIds = vendors.map((v) => v._id);
+
+    // If no vendors found in this province, return empty
+    if (vendorIds.length === 0) {
+      return res.json([]);
+    }
+  }
+
+  // Build product query
+  let query = { status: "active" };
+
+  // Filter by vendor location if specified
+  if (vendorIds.length > 0) {
+    query.vendor = { $in: vendorIds };
+  }
+
+  // First try to get regional specialty products
+  let products = await Product.find({ ...query, isRegionalSpecialty: true })
     .populate("vendor", "businessName district province")
     .sort({ createdAt: -1 })
     .limit(parseInt(limit));
 
-  // If not enough regional specialty products, get products from different provinces
+  // If not enough regional specialty products, get more products from same province/district
+  // but exclude featured products to avoid overlap with Featured Products section
   if (products.length < limit) {
     const remaining = parseInt(limit) - products.length;
     const existingIds = products.map((p) => p._id);
 
     const moreProducts = await Product.find({
-      status: "active",
+      ...query,
       _id: { $nin: existingIds },
+      isFeatured: { $ne: true }, // Exclude featured products
     })
       .populate("vendor", "businessName district province")
-      .sort({ createdAt: -1 })
+      .sort({ rating: -1, createdAt: -1 })
       .limit(remaining);
 
-    products.push(...moreProducts);
+    products = [...products, ...moreProducts];
   }
 
   res.json(products);

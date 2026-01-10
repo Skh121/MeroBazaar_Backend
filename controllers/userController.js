@@ -1,6 +1,8 @@
 const asyncHandler = require("express-async-handler");
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
+const fs = require("fs");
+const path = require("path");
 
 // @desc    Get user profile
 // @route   GET /api/users/profile
@@ -205,6 +207,45 @@ const getAddresses = asyncHandler(async (req, res) => {
   res.json(user.addresses);
 });
 
+// @desc    Upload user avatar
+// @route   POST /api/users/avatar
+// @access  Private
+const uploadAvatar = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  }
+
+  if (!req.file) {
+    res.status(400);
+    throw new Error("No file uploaded");
+  }
+
+  // Delete old avatar if it exists and is a local file
+  if (user.avatar && user.avatar.includes("/uploads/avatars/")) {
+    const oldAvatarPath = path.join(
+      __dirname,
+      "..",
+      user.avatar.replace(/^\//, "")
+    );
+    if (fs.existsSync(oldAvatarPath)) {
+      fs.unlinkSync(oldAvatarPath);
+    }
+  }
+
+  // Set new avatar URL
+  const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+  user.avatar = avatarUrl;
+  await user.save();
+
+  res.json({
+    message: "Avatar uploaded successfully",
+    avatar: avatarUrl,
+  });
+});
+
 module.exports = {
   getUserProfile,
   updateUserProfile,
@@ -213,4 +254,5 @@ module.exports = {
   updateAddress,
   deleteAddress,
   getAddresses,
+  uploadAvatar,
 };

@@ -31,7 +31,19 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: false,
+    default: null,
+  },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    default: null,
+  },
+  authProvider: {
+    type: String,
+    enum: ["local", "google"],
+    default: "local",
   },
   phone: {
     type: String,
@@ -56,6 +68,19 @@ const UserSchema = new mongoose.Schema({
     enum: ["customer", "admin"],
     default: "customer",
   },
+  status: {
+    type: String,
+    enum: ["active", "suspended"],
+    default: "active",
+  },
+  suspendedAt: {
+    type: Date,
+    default: null,
+  },
+  suspendReason: {
+    type: String,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -72,20 +97,19 @@ const UserSchema = new mongoose.Schema({
 
 // Method to compare entered password with hashed password in DB
 UserSchema.methods.matchPassword = async function (enteredPassword) {
-  // 'this.password' is the hashed password from the DB
+  // Return false if no password set (Google-only users)
+  if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
 // Middleware: Hash password before saving (runs on signup)
-// FIX: Removed 'next' argument and the 'next()' call for an async hook.
 UserSchema.pre("save", async function () {
-  // Only run if the password field is actually modified
-  if (!this.isModified("password")) {
-    return; // Use 'return' instead of 'return next()'
+  // Skip if password is null/undefined or not modified
+  if (!this.password || !this.isModified("password")) {
+    return;
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  // Mongoose automatically continues when this async function completes.
 });
 
 const User = mongoose.model("User", UserSchema);

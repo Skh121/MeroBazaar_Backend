@@ -7,14 +7,17 @@ const {
   updateAddress,
   deleteAddress,
   getAddresses,
+  uploadAvatar,
 } = require("../controllers/userController");
 const { protect } = require("../middleware/authMiddleware");
+const { handleAvatarUpload } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
 // Profile routes
 router.get("/profile", protect, getUserProfile);
 router.put("/profile", protect, updateUserProfile);
+router.post("/avatar", protect, handleAvatarUpload, uploadAvatar);
 
 // Password change
 router.put("/change-password", protect, changePassword);

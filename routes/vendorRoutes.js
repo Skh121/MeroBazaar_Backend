@@ -4,6 +4,7 @@ const {
   authVendor,
   getVendorProfile,
   updateVendorProfile,
+  changeVendorPassword,
 } = require("../controllers/vendorController");
 const validate = require("../middleware/validate");
 const {
@@ -21,5 +22,6 @@ router.post("/auth/login", validate(vendorLoginSchema), authVendor);
 // Protected vendor routes
 router.get("/profile", protectVendor, getVendorProfile);
 router.put("/profile", protectVendor, updateVendorProfile);
+router.put("/password", protectVendor, changeVendorPassword);
 
 module.exports = router;
