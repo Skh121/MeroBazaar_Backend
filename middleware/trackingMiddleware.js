@@ -83,7 +83,12 @@ const trackEvent = async (eventData) => {
 
     // Update aggregated interactions if user and product are present
     if (eventData.user && eventData.product) {
-      await updateInteractionScore(eventData.user, eventData.product, eventData.eventType, eventData);
+      await updateInteractionScore(
+        eventData.user,
+        eventData.product,
+        eventData.eventType,
+        eventData
+      );
     }
 
     return event;
@@ -94,7 +99,12 @@ const trackEvent = async (eventData) => {
 };
 
 // Update user-product interaction scores
-const updateInteractionScore = async (userId, productId, eventType, eventData = {}) => {
+const updateInteractionScore = async (
+  userId,
+  productId,
+  eventType,
+  eventData = {}
+) => {
   try {
     const updateFields = {
       lastInteraction: new Date(),
@@ -152,7 +162,9 @@ const VIEW_DEDUP_WINDOW_MINUTES = 30;
 
 // Check if a view event already exists within the deduplication window
 const isDuplicateView = async (sessionId, productId, userId = null) => {
-  const windowStart = new Date(Date.now() - VIEW_DEDUP_WINDOW_MINUTES * 60 * 1000);
+  const windowStart = new Date(
+    Date.now() - VIEW_DEDUP_WINDOW_MINUTES * 60 * 1000
+  );
 
   // Build query for deduplication
   const query = {

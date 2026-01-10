@@ -2,22 +2,38 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Ensure uploads directory exists
-const uploadDir = path.join(__dirname, "..", "uploads", "products");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Ensure uploads directories exist
+const productUploadDir = path.join(__dirname, "..", "uploads", "products");
+const avatarUploadDir = path.join(__dirname, "..", "uploads", "avatars");
+
+if (!fs.existsSync(productUploadDir)) {
+  fs.mkdirSync(productUploadDir, { recursive: true });
+}
+if (!fs.existsSync(avatarUploadDir)) {
+  fs.mkdirSync(avatarUploadDir, { recursive: true });
 }
 
-// Configure storage
-const storage = multer.diskStorage({
+// Configure storage for products
+const productStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    cb(null, productUploadDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename: timestamp-randomstring.extension
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, `product-${uniqueSuffix}${ext}`);
+  },
+});
+
+// Configure storage for avatars
+const avatarStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, avatarUploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, `avatar-${uniqueSuffix}${ext}`);
   },
 });
 
@@ -36,17 +52,29 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Multer upload configuration
-const upload = multer({
-  storage: storage,
+// Multer upload configuration for products
+const productUpload = multer({
+  storage: productStorage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
   },
   fileFilter: fileFilter,
 });
 
+// Multer upload configuration for avatars
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB limit for avatars
+  },
+  fileFilter: fileFilter,
+});
+
 // Upload multiple product images (max 5)
-const uploadProductImages = upload.array("images", 5);
+const uploadProductImages = productUpload.array("images", 5);
+
+// Upload single avatar
+const uploadSingleAvatar = avatarUpload.single("avatar");
 
 // Middleware wrapper to handle multer errors
 const handleUpload = (req, res, next) => {
@@ -70,4 +98,21 @@ const handleUpload = (req, res, next) => {
   });
 };
 
-module.exports = { handleUpload };
+// Handle avatar upload
+const handleAvatarUpload = (req, res, next) => {
+  uploadSingleAvatar(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res
+          .status(400)
+          .json({ message: "File too large. Maximum size is 2MB." });
+      }
+      return res.status(400).json({ message: err.message });
+    } else if (err) {
+      return res.status(400).json({ message: err.message });
+    }
+    next();
+  });
+};
+
+module.exports = { handleUpload, handleAvatarUpload };

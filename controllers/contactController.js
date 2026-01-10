@@ -1,5 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const Contact = require("../models/Contact");
+const { sendContactMessageNotification } = require("../services/emailService");
 
 // @desc    Submit a contact message (public)
 // @route   POST /api/contact
@@ -14,6 +15,14 @@ const submitContactMessage = asyncHandler(async (req, res) => {
 
   const contact = await Contact.create({
     fullName,
+    email,
+    subject,
+    message,
+  });
+
+  // Send notification to admin about new contact message
+  sendContactMessageNotification({
+    name: fullName,
     email,
     subject,
     message,
