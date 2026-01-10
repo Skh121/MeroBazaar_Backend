@@ -6,8 +6,18 @@ const {
   DemandForecast,
   DynamicPrice,
 } = require("../models/UserBehavior");
-const { trackEvent, getSessionId, isDuplicateView } = require("../middleware/trackingMiddleware");
+const {
+  trackEvent,
+  getSessionId,
+  isDuplicateView,
+} = require("../middleware/trackingMiddleware");
 const axios = require("axios");
+const {
+  getPersonalizedRecommendations,
+  getTrendingProducts,
+  getSeasonalProducts,
+  getPopularProducts,
+} = require("../services/recommendationService");
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
@@ -17,7 +27,15 @@ const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 // @route   POST /api/analytics/track
 // @access  Public
 const trackUserEvent = asyncHandler(async (req, res) => {
-  const { eventType, productId, category, searchQuery, quantity, price, metadata } = req.body;
+  const {
+    eventType,
+    productId,
+    category,
+    searchQuery,
+    quantity,
+    price,
+    metadata,
+  } = req.body;
 
   const event = await trackEvent({
     user: req.user?._id,
@@ -65,7 +83,11 @@ const trackBatchEvents = asyncHandler(async (req, res) => {
     events.map(async (event) => {
       // Skip duplicate view events within the deduplication window
       if (event.eventType === "view" && event.productId) {
-        const isDuplicate = await isDuplicateView(sessionId, event.productId, userId);
+        const isDuplicate = await isDuplicateView(
+          sessionId,
+          event.productId,
+          userId
+        );
         if (isDuplicate) {
           skippedDuplicates++;
           return null;
@@ -103,38 +125,94 @@ const trackBatchEvents = asyncHandler(async (req, res) => {
 // @route   GET /api/analytics/recommendations
 // @access  Private
 const getRecommendations = asyncHandler(async (req, res) => {
-  const { limit = 10, type = "collaborative" } = req.query;
+  const { limit = 12, type = "forYou" } = req.query;
   const userId = req.user._id.toString();
 
   try {
-    const response = await axios.get(`${ML_SERVICE_URL}/recommendations/${userId}`, {
-      params: { limit, type },
-      timeout: 5000,
-    });
+    let result;
 
-    res.json(response.data);
+    switch (type) {
+      case "trending":
+        result = await getTrendingProducts(parseInt(limit));
+        res.json({
+          success: true,
+          type: "trending",
+          recommendations: result,
+        });
+        break;
+
+      case "seasonal":
+        result = await getSeasonalProducts(parseInt(limit));
+        res.json({
+          success: true,
+          type: "seasonal",
+          season: result.season,
+          recommendations: result.products,
+        });
+        break;
+
+      case "forYou":
+      default:
+        result = await getPersonalizedRecommendations(userId, parseInt(limit));
+        res.json({
+          success: true,
+          type: "personalized",
+          recommendations: result,
+        });
+        break;
+    }
   } catch (error) {
-    console.error("ML Service error:", error.message);
+    console.error("Recommendation error:", error.message);
 
     // Fallback: Return popular products
-    const popularProducts = await UserProductInteraction.aggregate([
-      {
-        $group: {
-          _id: "$product",
-          totalScore: { $sum: "$interactionScore" },
-        },
-      },
-      { $sort: { totalScore: -1 } },
-      { $limit: parseInt(limit) },
-    ]);
-
-    const productIds = popularProducts.map((p) => p._id);
-
+    const fallback = await getPopularProducts(parseInt(limit));
     res.json({
-      recommendations: productIds,
+      success: true,
       type: "popular_fallback",
+      recommendations: fallback,
       message: "Using popular products as fallback",
     });
+  }
+});
+
+// @desc    Get trending products (public - for guests)
+// @route   GET /api/analytics/recommendations/trending
+// @access  Public
+const getTrendingRecommendations = asyncHandler(async (req, res) => {
+  const { limit = 12 } = req.query;
+
+  try {
+    const result = await getTrendingProducts(parseInt(limit));
+    res.json({
+      success: true,
+      type: "trending",
+      recommendations: result,
+    });
+  } catch (error) {
+    console.error("Trending recommendations error:", error.message);
+    res.status(500);
+    throw new Error("Failed to fetch trending products");
+  }
+});
+
+// @desc    Get seasonal products (public - for guests)
+// @route   GET /api/analytics/recommendations/seasonal
+// @access  Public
+const getSeasonalRecommendations = asyncHandler(async (req, res) => {
+  const { limit = 12 } = req.query;
+
+  try {
+    const result = await getSeasonalProducts(parseInt(limit));
+    res.json({
+      success: true,
+      type: "seasonal",
+      season: result.season,
+      recommendations: result.products,
+    });
+  } catch (error) {
+    console.error("Seasonal recommendations error:", error.message);
+    res.status(500);
+    throw new Error("Failed to fetch seasonal products");
   }
 });
 
@@ -146,10 +224,13 @@ const getSimilarProducts = asyncHandler(async (req, res) => {
   const { limit = 6 } = req.query;
 
   try {
-    const response = await axios.get(`${ML_SERVICE_URL}/recommendations/similar/${productId}`, {
-      params: { limit },
-      timeout: 5000,
-    });
+    const response = await axios.get(
+      `${ML_SERVICE_URL}/recommendations/similar/${productId}`,
+      {
+        params: { limit },
+        timeout: 5000,
+      }
+    );
 
     res.json(response.data);
   } catch (error) {
@@ -253,7 +334,11 @@ const getMySegment = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const recalculateSegments = asyncHandler(async (req, res) => {
   try {
-    const response = await axios.post(`${ML_SERVICE_URL}/segmentation/calculate`, {}, { timeout: 60000 });
+    const response = await axios.post(
+      `${ML_SERVICE_URL}/segmentation/calculate`,
+      {},
+      { timeout: 60000 }
+    );
 
     res.json({
       success: true,
@@ -273,7 +358,14 @@ const recalculateSegments = asyncHandler(async (req, res) => {
 // @route   GET /api/analytics/forecasts
 // @access  Private (Admin/Vendor)
 const getDemandForecasts = asyncHandler(async (req, res) => {
-  const { productId, category, startDate, endDate, page = 1, limit = 30 } = req.query;
+  const {
+    productId,
+    category,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 30,
+  } = req.query;
 
   const query = {};
 
@@ -282,7 +374,9 @@ const getDemandForecasts = asyncHandler(async (req, res) => {
   } else if (req.vendor) {
     // Vendors can only see their own products
     const Product = require("../models/Product");
-    const vendorProducts = await Product.find({ vendor: req.vendor._id }).select("_id");
+    const vendorProducts = await Product.find({
+      vendor: req.vendor._id,
+    }).select("_id");
     query.product = { $in: vendorProducts.map((p) => p._id) };
   }
 
@@ -354,7 +448,9 @@ const getDynamicPrices = asyncHandler(async (req, res) => {
     query.product = productId;
   } else if (req.vendor) {
     const Product = require("../models/Product");
-    const vendorProducts = await Product.find({ vendor: req.vendor._id }).select("_id");
+    const vendorProducts = await Product.find({
+      vendor: req.vendor._id,
+    }).select("_id");
     query.product = { $in: vendorProducts.map((p) => p._id) };
   }
 
@@ -386,7 +482,10 @@ const calculateDynamicPrice = asyncHandler(async (req, res) => {
   // Verify vendor owns this product if not admin
   if (req.vendor) {
     const Product = require("../models/Product");
-    const product = await Product.findOne({ _id: productId, vendor: req.vendor._id });
+    const product = await Product.findOne({
+      _id: productId,
+      vendor: req.vendor._id,
+    });
     if (!product) {
       res.status(403);
       throw new Error("Not authorized to price this product");
@@ -449,6 +548,603 @@ const applyDynamicPrice = asyncHandler(async (req, res) => {
   });
 });
 
+// ============ VENDOR-SPECIFIC ANALYTICS ============
+
+// @desc    Get customer segments for vendor's customers only
+// @route   GET /api/analytics/vendor/segments
+// @access  Private (Vendor)
+const getVendorCustomerSegments = asyncHandler(async (req, res) => {
+  const Order = require("../models/Order");
+  const Product = require("../models/Product");
+
+  // Get vendor's products
+  const vendorProducts = await Product.find({ vendor: req.vendor._id }).select(
+    "_id"
+  );
+  const productIds = vendorProducts.map((p) => p._id);
+
+  // Get all orders containing vendor's products
+  const orders = await Order.find({ "items.vendor": req.vendor._id })
+    .populate("user", "fullName email createdAt")
+    .sort({ createdAt: -1 });
+
+  // Build customer data map
+  const customerMap = {};
+  const now = new Date();
+
+  orders.forEach((order) => {
+    if (!order.user) return;
+    const customerId = order.user._id.toString();
+
+    // Calculate vendor-specific revenue from this order
+    let vendorRevenue = 0;
+    order.items.forEach((item) => {
+      if (item.vendor && item.vendor.toString() === req.vendor._id.toString()) {
+        vendorRevenue += item.price * item.quantity;
+      }
+    });
+
+    if (!customerMap[customerId]) {
+      customerMap[customerId] = {
+        user: order.user,
+        totalOrders: 0,
+        totalSpent: 0,
+        firstOrderDate: order.createdAt,
+        lastOrderDate: order.createdAt,
+        orderDates: [],
+      };
+    }
+
+    customerMap[customerId].totalOrders += 1;
+    customerMap[customerId].totalSpent += vendorRevenue;
+    customerMap[customerId].orderDates.push(order.createdAt);
+
+    if (order.createdAt < customerMap[customerId].firstOrderDate) {
+      customerMap[customerId].firstOrderDate = order.createdAt;
+    }
+    if (order.createdAt > customerMap[customerId].lastOrderDate) {
+      customerMap[customerId].lastOrderDate = order.createdAt;
+    }
+  });
+
+  // Calculate RFM scores and segment customers
+  const customers = Object.values(customerMap);
+  const maxRecency = 365; // days
+  const maxFrequency = Math.max(...customers.map((c) => c.totalOrders), 1);
+  const maxMonetary = Math.max(...customers.map((c) => c.totalSpent), 1);
+
+  const segmentedCustomers = customers.map((customer) => {
+    const daysSinceLastOrder = Math.floor(
+      (now - new Date(customer.lastOrderDate)) / (1000 * 60 * 60 * 24)
+    );
+
+    // RFM Scores (1-5 scale)
+    const recencyScore = Math.max(
+      1,
+      Math.min(5, 5 - Math.floor((daysSinceLastOrder / maxRecency) * 5))
+    );
+    const frequencyScore = Math.max(
+      1,
+      Math.min(5, Math.ceil((customer.totalOrders / maxFrequency) * 5))
+    );
+    const monetaryScore = Math.max(
+      1,
+      Math.min(5, Math.ceil((customer.totalSpent / maxMonetary) * 5))
+    );
+    const rfmScore = recencyScore + frequencyScore + monetaryScore;
+
+    // Determine segment
+    let segment;
+    if (rfmScore >= 13) {
+      segment = "Champions";
+    } else if (rfmScore >= 10 && recencyScore >= 4) {
+      segment = "Loyal Customers";
+    } else if (frequencyScore >= 4) {
+      segment = "Potential Loyalists";
+    } else if (recencyScore >= 4 && frequencyScore <= 2) {
+      segment = "New Customers";
+    } else if (recencyScore <= 2 && frequencyScore >= 3) {
+      segment = "At Risk";
+    } else if (recencyScore <= 2 && monetaryScore >= 3) {
+      segment = "Can't Lose Them";
+    } else if (recencyScore <= 2) {
+      segment = "Hibernating";
+    } else {
+      segment = "Need Attention";
+    }
+
+    return {
+      ...customer,
+      daysSinceLastOrder,
+      recencyScore,
+      frequencyScore,
+      monetaryScore,
+      rfmScore,
+      segment,
+      avgOrderValue:
+        customer.totalOrders > 0
+          ? customer.totalSpent / customer.totalOrders
+          : 0,
+    };
+  });
+
+  // Calculate segment distribution
+  const segmentDistribution = {};
+  segmentedCustomers.forEach((c) => {
+    if (!segmentDistribution[c.segment]) {
+      segmentDistribution[c.segment] = {
+        count: 0,
+        totalRevenue: 0,
+        avgOrderValue: 0,
+      };
+    }
+    segmentDistribution[c.segment].count += 1;
+    segmentDistribution[c.segment].totalRevenue += c.totalSpent;
+  });
+
+  // Calculate averages for each segment
+  Object.keys(segmentDistribution).forEach((segment) => {
+    const data = segmentDistribution[segment];
+    data.avgOrderValue = data.count > 0 ? data.totalRevenue / data.count : 0;
+  });
+
+  // Segment colors for frontend
+  const segmentColors = {
+    Champions: "#10B981",
+    "Loyal Customers": "#3B82F6",
+    "Potential Loyalists": "#8B5CF6",
+    "New Customers": "#06B6D4",
+    "Need Attention": "#F59E0B",
+    "At Risk": "#EF4444",
+    "Can't Lose Them": "#EC4899",
+    Hibernating: "#6B7280",
+  };
+
+  res.json({
+    totalCustomers: customers.length,
+    segments: segmentDistribution,
+    segmentColors,
+    customers: segmentedCustomers.slice(0, 50), // Return top 50 customers
+    insights: {
+      championsCount: segmentDistribution["Champions"]?.count || 0,
+      atRiskCount: segmentDistribution["At Risk"]?.count || 0,
+      newCustomersCount: segmentDistribution["New Customers"]?.count || 0,
+      avgCustomerValue:
+        customers.length > 0
+          ? customers.reduce((sum, c) => sum + c.totalSpent, 0) /
+            customers.length
+          : 0,
+    },
+  });
+});
+
+// @desc    Get demand forecasting for vendor's products
+// @route   GET /api/analytics/vendor/forecasts
+// @access  Private (Vendor)
+const getVendorDemandForecasts = asyncHandler(async (req, res) => {
+  const Order = require("../models/Order");
+  const Product = require("../models/Product");
+
+  // Get vendor's products
+  const vendorProducts = await Product.find({ vendor: req.vendor._id }).select(
+    "_id name price stock category"
+  );
+
+  const productIds = vendorProducts.map((p) => p._id);
+
+  // Get historical orders for vendor's products (last 90 days)
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  const orders = await Order.find({
+    "items.vendor": req.vendor._id,
+    createdAt: { $gte: ninetyDaysAgo },
+    orderStatus: { $ne: "cancelled" },
+  });
+
+  // Build sales data per product per day
+  const productSalesMap = {};
+
+  vendorProducts.forEach((product) => {
+    productSalesMap[product._id.toString()] = {
+      product,
+      dailySales: {},
+      totalSold: 0,
+      totalRevenue: 0,
+    };
+  });
+
+  orders.forEach((order) => {
+    const orderDate = new Date(order.createdAt).toISOString().split("T")[0];
+
+    order.items.forEach((item) => {
+      if (item.vendor && item.vendor.toString() === req.vendor._id.toString()) {
+        const productId = item.product?.toString();
+        if (productSalesMap[productId]) {
+          if (!productSalesMap[productId].dailySales[orderDate]) {
+            productSalesMap[productId].dailySales[orderDate] = {
+              quantity: 0,
+              revenue: 0,
+            };
+          }
+          productSalesMap[productId].dailySales[orderDate].quantity +=
+            item.quantity;
+          productSalesMap[productId].dailySales[orderDate].revenue +=
+            item.price * item.quantity;
+          productSalesMap[productId].totalSold += item.quantity;
+          productSalesMap[productId].totalRevenue += item.price * item.quantity;
+        }
+      }
+    });
+  });
+
+  // Calculate forecasts using simple moving average and trend analysis
+  const forecasts = [];
+
+  Object.values(productSalesMap).forEach((data) => {
+    const salesArray = Object.entries(data.dailySales)
+      .sort(([a], [b]) => new Date(a) - new Date(b))
+      .map(([date, sales]) => ({ date, ...sales }));
+
+    if (salesArray.length < 3) {
+      // Not enough data for forecasting
+      forecasts.push({
+        product: data.product,
+        historicalData: salesArray,
+        forecast: null,
+        trend: "insufficient_data",
+        confidence: 0,
+      });
+      return;
+    }
+
+    // Calculate 7-day moving average
+    const recentSales = salesArray.slice(-30);
+    const avgDailySales =
+      recentSales.reduce((sum, d) => sum + d.quantity, 0) / recentSales.length;
+
+    // Calculate trend (comparing last 15 days to previous 15 days)
+    const lastHalf = salesArray.slice(-15);
+    const prevHalf = salesArray.slice(-30, -15);
+
+    const lastHalfAvg =
+      lastHalf.length > 0
+        ? lastHalf.reduce((sum, d) => sum + d.quantity, 0) / lastHalf.length
+        : 0;
+    const prevHalfAvg =
+      prevHalf.length > 0
+        ? prevHalf.reduce((sum, d) => sum + d.quantity, 0) / prevHalf.length
+        : lastHalfAvg;
+
+    let trend = "stable";
+    let trendPercentage = 0;
+
+    if (prevHalfAvg > 0) {
+      trendPercentage = ((lastHalfAvg - prevHalfAvg) / prevHalfAvg) * 100;
+      if (trendPercentage > 15) trend = "increasing";
+      else if (trendPercentage < -15) trend = "decreasing";
+    }
+
+    // Generate 14-day forecast
+    const forecastDays = [];
+    const trendMultiplier = 1 + (trendPercentage / 100) * 0.1; // Apply 10% of trend per day
+
+    for (let i = 1; i <= 14; i++) {
+      const forecastDate = new Date();
+      forecastDate.setDate(forecastDate.getDate() + i);
+
+      // Add some seasonality (weekends have lower sales)
+      const dayOfWeek = forecastDate.getDay();
+      const weekendFactor = dayOfWeek === 0 || dayOfWeek === 6 ? 0.7 : 1.0;
+
+      const predictedQuantity = Math.max(
+        0,
+        Math.round(
+          avgDailySales * Math.pow(trendMultiplier, i / 7) * weekendFactor
+        )
+      );
+
+      forecastDays.push({
+        date: forecastDate.toISOString().split("T")[0],
+        predictedQuantity,
+        predictedRevenue: predictedQuantity * data.product.price,
+      });
+    }
+
+    // Calculate confidence based on data consistency
+    const variance =
+      recentSales.length > 1
+        ? recentSales.reduce(
+            (sum, d) => sum + Math.pow(d.quantity - avgDailySales, 2),
+            0
+          ) / recentSales.length
+        : 0;
+    const stdDev = Math.sqrt(variance);
+    const coefficient = avgDailySales > 0 ? stdDev / avgDailySales : 1;
+    const confidence = Math.max(
+      0,
+      Math.min(100, Math.round((1 - coefficient) * 100))
+    );
+
+    // Stock alert
+    const next14DaysDemand = forecastDays.reduce(
+      (sum, d) => sum + d.predictedQuantity,
+      0
+    );
+    const stockStatus =
+      data.product.stock >= next14DaysDemand * 1.2
+        ? "adequate"
+        : data.product.stock >= next14DaysDemand
+        ? "low"
+        : "critical";
+
+    forecasts.push({
+      product: data.product,
+      historicalData: salesArray.slice(-30),
+      avgDailySales: Math.round(avgDailySales * 10) / 10,
+      trend,
+      trendPercentage: Math.round(trendPercentage * 10) / 10,
+      forecast: forecastDays,
+      totalForecastDemand: next14DaysDemand,
+      confidence,
+      stockStatus,
+      currentStock: data.product.stock,
+      totalSold: data.totalSold,
+      totalRevenue: data.totalRevenue,
+    });
+  });
+
+  // Sort by total revenue (most important products first)
+  forecasts.sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+  res.json({
+    forecasts,
+    summary: {
+      totalProducts: forecasts.length,
+      increasingTrend: forecasts.filter((f) => f.trend === "increasing").length,
+      decreasingTrend: forecasts.filter((f) => f.trend === "decreasing").length,
+      lowStockAlerts: forecasts.filter(
+        (f) => f.stockStatus === "low" || f.stockStatus === "critical"
+      ).length,
+    },
+  });
+});
+
+// @desc    Get enhanced dynamic pricing suggestions for vendor
+// @route   GET /api/analytics/vendor/pricing-suggestions
+// @access  Private (Vendor)
+const getVendorPricingSuggestions = asyncHandler(async (req, res) => {
+  const Order = require("../models/Order");
+  const Product = require("../models/Product");
+
+  // Get vendor's products with details
+  const vendorProducts = await Product.find({
+    vendor: req.vendor._id,
+    status: "active",
+  }).select("_id name price stock category compareAtPrice");
+
+  // Get sales data for last 60 days
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+  const orders = await Order.find({
+    "items.vendor": req.vendor._id,
+    createdAt: { $gte: sixtyDaysAgo },
+    orderStatus: { $ne: "cancelled" },
+  });
+
+  // Get view data for products
+  const viewData = await UserEvent.aggregate([
+    {
+      $match: {
+        product: { $in: vendorProducts.map((p) => p._id) },
+        eventType: "view",
+        timestamp: { $gte: sixtyDaysAgo },
+      },
+    },
+    {
+      $group: {
+        _id: "$product",
+        views: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const viewMap = {};
+  viewData.forEach((v) => {
+    viewMap[v._id.toString()] = v.views;
+  });
+
+  // Calculate sales metrics per product
+  const productMetrics = {};
+
+  vendorProducts.forEach((product) => {
+    productMetrics[product._id.toString()] = {
+      product,
+      totalSold: 0,
+      totalRevenue: 0,
+      views: viewMap[product._id.toString()] || 0,
+      lastThirtyDaysSales: 0,
+      prevThirtyDaysSales: 0,
+    };
+  });
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  orders.forEach((order) => {
+    const isLastThirtyDays = new Date(order.createdAt) >= thirtyDaysAgo;
+
+    order.items.forEach((item) => {
+      if (item.vendor && item.vendor.toString() === req.vendor._id.toString()) {
+        const productId = item.product?.toString();
+        if (productMetrics[productId]) {
+          productMetrics[productId].totalSold += item.quantity;
+          productMetrics[productId].totalRevenue += item.price * item.quantity;
+
+          if (isLastThirtyDays) {
+            productMetrics[productId].lastThirtyDaysSales += item.quantity;
+          } else {
+            productMetrics[productId].prevThirtyDaysSales += item.quantity;
+          }
+        }
+      }
+    });
+  });
+
+  // Generate pricing suggestions
+  const suggestions = [];
+
+  Object.values(productMetrics).forEach((data) => {
+    const {
+      product,
+      totalSold,
+      views,
+      lastThirtyDaysSales,
+      prevThirtyDaysSales,
+    } = data;
+
+    // Calculate conversion rate
+    const conversionRate = views > 0 ? (totalSold / views) * 100 : 0;
+
+    // Calculate demand trend
+    let demandTrend = "stable";
+    let trendPercentage = 0;
+
+    if (prevThirtyDaysSales > 0) {
+      trendPercentage =
+        ((lastThirtyDaysSales - prevThirtyDaysSales) / prevThirtyDaysSales) *
+        100;
+      if (trendPercentage > 20) demandTrend = "high";
+      else if (trendPercentage < -20) demandTrend = "low";
+    } else if (lastThirtyDaysSales > 0) {
+      demandTrend = "high";
+      trendPercentage = 100;
+    }
+
+    // Stock level analysis
+    const avgDailySales = lastThirtyDaysSales / 30;
+    const daysOfStock = avgDailySales > 0 ? product.stock / avgDailySales : 999;
+
+    // Generate price suggestion based on multiple factors
+    let suggestedPrice = product.price;
+    let adjustmentPercentage = 0;
+    let reason = "";
+    let priority = "low";
+
+    // Rule 1: High demand + Low stock = Increase price
+    if (demandTrend === "high" && daysOfStock < 14) {
+      adjustmentPercentage = Math.min(15, Math.max(5, trendPercentage / 5));
+      suggestedPrice = Math.round(
+        product.price * (1 + adjustmentPercentage / 100)
+      );
+      reason = "High demand with limited stock";
+      priority = "high";
+    }
+    // Rule 2: Low demand + High stock = Decrease price
+    else if (demandTrend === "low" && daysOfStock > 60) {
+      adjustmentPercentage = -Math.min(
+        20,
+        Math.max(5, Math.abs(trendPercentage) / 4)
+      );
+      suggestedPrice = Math.round(
+        product.price * (1 + adjustmentPercentage / 100)
+      );
+      reason = "Low demand with excess inventory";
+      priority = "high";
+    }
+    // Rule 3: Low conversion rate = Price might be too high
+    else if (views > 50 && conversionRate < 1) {
+      adjustmentPercentage = -10;
+      suggestedPrice = Math.round(product.price * 0.9);
+      reason = "Low conversion rate - consider competitive pricing";
+      priority = "medium";
+    }
+    // Rule 4: High conversion + stable demand = Small increase
+    else if (conversionRate > 5 && demandTrend !== "low") {
+      adjustmentPercentage = 5;
+      suggestedPrice = Math.round(product.price * 1.05);
+      reason = "Strong conversion rate suggests room for price increase";
+      priority = "low";
+    }
+    // Rule 5: Very low stock = Urgent increase
+    else if (product.stock < 5 && avgDailySales > 0.5) {
+      adjustmentPercentage = 10;
+      suggestedPrice = Math.round(product.price * 1.1);
+      reason = "Critical low stock - maximize margin";
+      priority = "high";
+    }
+
+    suggestions.push({
+      product: {
+        _id: product._id,
+        name: product.name,
+        currentPrice: product.price,
+        compareAtPrice: product.compareAtPrice,
+        stock: product.stock,
+        category: product.category,
+      },
+      metrics: {
+        totalSold,
+        views,
+        conversionRate: Math.round(conversionRate * 100) / 100,
+        demandTrend,
+        trendPercentage: Math.round(trendPercentage * 10) / 10,
+        daysOfStock: Math.round(daysOfStock),
+        avgDailySales: Math.round(avgDailySales * 10) / 10,
+      },
+      suggestion: {
+        recommendedPrice: suggestedPrice,
+        adjustmentPercentage: Math.round(adjustmentPercentage * 10) / 10,
+        reason,
+        priority,
+        potentialRevenue:
+          adjustmentPercentage !== 0
+            ? Math.round((suggestedPrice - product.price) * lastThirtyDaysSales)
+            : 0,
+      },
+    });
+  });
+
+  // Sort by priority and potential impact
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  suggestions.sort((a, b) => {
+    if (
+      priorityOrder[a.suggestion.priority] !==
+      priorityOrder[b.suggestion.priority]
+    ) {
+      return (
+        priorityOrder[a.suggestion.priority] -
+        priorityOrder[b.suggestion.priority]
+      );
+    }
+    return (
+      Math.abs(b.suggestion.adjustmentPercentage) -
+      Math.abs(a.suggestion.adjustmentPercentage)
+    );
+  });
+
+  res.json({
+    suggestions,
+    summary: {
+      totalProducts: suggestions.length,
+      priceIncreaseOpportunities: suggestions.filter(
+        (s) => s.suggestion.adjustmentPercentage > 0
+      ).length,
+      priceDecreaseRecommendations: suggestions.filter(
+        (s) => s.suggestion.adjustmentPercentage < 0
+      ).length,
+      highPriorityCount: suggestions.filter(
+        (s) => s.suggestion.priority === "high"
+      ).length,
+      potentialMonthlyRevenue: suggestions.reduce(
+        (sum, s) => sum + Math.max(0, s.suggestion.potentialRevenue),
+        0
+      ),
+    },
+  });
+});
+
 // ============ ANALYTICS DASHBOARD ============
 
 // @desc    Get analytics overview (Admin)
@@ -461,7 +1157,8 @@ const getDashboardAnalytics = asyncHandler(async (req, res) => {
   if (startDate) dateFilter.$gte = new Date(startDate);
   if (endDate) dateFilter.$lte = new Date(endDate);
 
-  const timestampFilter = Object.keys(dateFilter).length > 0 ? { timestamp: dateFilter } : {};
+  const timestampFilter =
+    Object.keys(dateFilter).length > 0 ? { timestamp: dateFilter } : {};
 
   // Event counts by type
   const eventCounts = await UserEvent.aggregate([
@@ -564,7 +1261,9 @@ const getDashboardAnalytics = asyncHandler(async (req, res) => {
 // @access  Private (Vendor)
 const getVendorAnalytics = asyncHandler(async (req, res) => {
   const Product = require("../models/Product");
-  const vendorProducts = await Product.find({ vendor: req.vendor._id }).select("_id");
+  const vendorProducts = await Product.find({ vendor: req.vendor._id }).select(
+    "_id"
+  );
   const productIds = vendorProducts.map((p) => p._id);
 
   // Product views and interactions
@@ -599,8 +1298,12 @@ const getVendorAnalytics = asyncHandler(async (req, res) => {
           date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
         },
         views: { $sum: { $cond: [{ $eq: ["$eventType", "view"] }, 1, 0] } },
-        cartAdds: { $sum: { $cond: [{ $eq: ["$eventType", "add_to_cart"] }, 1, 0] } },
-        purchases: { $sum: { $cond: [{ $eq: ["$eventType", "purchase"] }, 1, 0] } },
+        cartAdds: {
+          $sum: { $cond: [{ $eq: ["$eventType", "add_to_cart"] }, 1, 0] },
+        },
+        purchases: {
+          $sum: { $cond: [{ $eq: ["$eventType", "purchase"] }, 1, 0] },
+        },
       },
     },
     { $sort: { "_id.date": 1 } },
@@ -617,6 +1320,8 @@ module.exports = {
   trackUserEvent,
   trackBatchEvents,
   getRecommendations,
+  getTrendingRecommendations,
+  getSeasonalRecommendations,
   getSimilarProducts,
   getCustomerSegments,
   getMySegment,
@@ -628,4 +1333,8 @@ module.exports = {
   applyDynamicPrice,
   getDashboardAnalytics,
   getVendorAnalytics,
+  // Vendor-specific analytics
+  getVendorCustomerSegments,
+  getVendorDemandForecasts,
+  getVendorPricingSuggestions,
 };

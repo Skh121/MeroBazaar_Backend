@@ -4,6 +4,8 @@ const {
   trackUserEvent,
   trackBatchEvents,
   getRecommendations,
+  getTrendingRecommendations,
+  getSeasonalRecommendations,
   getSimilarProducts,
   getCustomerSegments,
   getMySegment,
@@ -15,6 +17,9 @@ const {
   applyDynamicPrice,
   getDashboardAnalytics,
   getVendorAnalytics,
+  getVendorCustomerSegments,
+  getVendorDemandForecasts,
+  getVendorPricingSuggestions,
 } = require("../controllers/analyticsController");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 const { protectVendor } = require("../middleware/authMiddleware");
@@ -29,7 +34,9 @@ router.post("/track/batch", trackBatchEvents);
 
 // ============ RECOMMENDATIONS ============
 router.get("/recommendations", protect, getRecommendations);
-router.get("/recommendations/similar/:productId", getSimilarProducts);
+router.get("/recommendations/trending", getTrendingRecommendations); // Public
+router.get("/recommendations/seasonal", getSeasonalRecommendations); // Public
+router.get("/recommendations/similar/:productId", getSimilarProducts); // Public
 
 // ============ CUSTOMER SEGMENTATION ============
 router.get("/segments", protect, adminOnly, getCustomerSegments);
@@ -52,5 +59,12 @@ router.get("/vendor/dashboard", protectVendor, getVendorAnalytics);
 // ============ VENDOR-SPECIFIC ROUTES ============
 router.get("/vendor/pricing", protectVendor, getDynamicPrices);
 router.post("/vendor/pricing/calculate", protectVendor, calculateDynamicPrice);
+router.get("/vendor/segments", protectVendor, getVendorCustomerSegments);
+router.get("/vendor/forecasts", protectVendor, getVendorDemandForecasts);
+router.get(
+  "/vendor/pricing-suggestions",
+  protectVendor,
+  getVendorPricingSuggestions
+);
 
 module.exports = router;
