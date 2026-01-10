@@ -1,8 +1,14 @@
 const asyncHandler = require("express-async-handler");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
-const { sendOTPEmail } = require("../services/emailService");
+const {
+  sendOTPEmail,
+  sendNewCustomerNotification,
+} = require("../services/emailService");
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -29,6 +35,9 @@ const registerUser = asyncHandler(async (req, res) => {
   });
 
   if (user) {
+    // Send notification to admin about new customer registration
+    sendNewCustomerNotification(user);
+
     res.status(201).json({
       _id: user._id,
       fullName: user.fullName,
@@ -49,19 +58,124 @@ const authUser = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email });
 
-  // Check if user exists AND if the provided password matches the stored hash
-  if (user && (await user.matchPassword(password))) {
+  if (!user) {
+    res.status(401).json({ message: "Invalid email or password." });
+    return;
+  }
+
+  // Check if this is a Google-only user (no password set)
+  if (user.authProvider === "google" && !user.password) {
+    res.status(401).json({
+      message:
+        "This account uses Google Sign-In. Please use the Google button to log in.",
+      authProvider: "google",
+    });
+    return;
+  }
+
+  // Check if the provided password matches the stored hash
+  if (await user.matchPassword(password)) {
     res.json({
       _id: user._id,
       fullName: user.fullName,
       email: user.email,
-      role: user.role, // <-- CRUCIAL: Returns 'customer' or 'admin'
+      role: user.role,
+      avatar: user.avatar,
+      authProvider: user.authProvider,
       token: generateToken(user._id),
     });
   } else {
-    // 401 Unauthorized
     res.status(401).json({ message: "Invalid email or password." });
   }
+});
+
+// @desc    Authenticate with Google OAuth
+// @route   POST /api/auth/google
+// @access  Public
+const googleAuth = asyncHandler(async (req, res) => {
+  const { credential } = req.body;
+
+  if (!credential) {
+    res.status(400).json({ message: "Google credential is required." });
+    return;
+  }
+
+  // Verify the Google ID token
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch (error) {
+    res.status(401).json({ message: "Invalid Google token." });
+    return;
+  }
+
+  const { sub: googleId, email, name, picture } = payload;
+
+  // Check if user exists by googleId (returning Google user)
+  let user = await User.findOne({ googleId });
+
+  if (user) {
+    // Returning Google user - just log them in
+    return res.json({
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      authProvider: user.authProvider,
+      token: generateToken(user._id),
+    });
+  }
+
+  // Check if user exists by email (account linking scenario)
+  user = await User.findOne({ email });
+
+  if (user) {
+    // Account linking: Email exists, link Google account
+    user.googleId = googleId;
+    user.avatar = user.avatar || picture;
+    await user.save({ validateBeforeSave: false });
+
+    return res.json({
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      authProvider: user.authProvider,
+      isLinked: true,
+      token: generateToken(user._id),
+    });
+  }
+
+  // New user - create account via Google
+  user = await User.create({
+    googleId,
+    fullName: name,
+    email,
+    password: null,
+    authProvider: "google",
+    avatar: picture,
+    role: "customer",
+  });
+
+  // Send notification to admin about new customer registration
+  sendNewCustomerNotification(user);
+
+  res.status(201).json({
+    _id: user._id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    avatar: user.avatar,
+    authProvider: user.authProvider,
+    isNewUser: true,
+    token: generateToken(user._id),
+  });
 });
 
 // @desc    Request password reset OTP
@@ -188,6 +302,7 @@ const resetPassword = asyncHandler(async (req, res) => {
 module.exports = {
   registerUser,
   authUser,
+  googleAuth,
   forgotPassword,
   verifyOTP,
   resetPassword,

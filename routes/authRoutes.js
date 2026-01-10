@@ -2,6 +2,7 @@ const express = require("express");
 const {
   registerUser,
   authUser,
+  googleAuth,
   forgotPassword,
   verifyOTP,
   resetPassword,
@@ -19,6 +20,7 @@ const router = express.Router();
 // Public routes for authentication
 router.post("/signup", validate(registerSchema), registerUser);
 router.post("/login", validate(loginSchema), authUser);
+router.post("/google", googleAuth);
 
 // Forgot password routes
 router.post("/forgot-password", validate(forgotPasswordSchema), forgotPassword);
