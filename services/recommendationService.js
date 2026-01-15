@@ -29,7 +29,10 @@ const getPersonalizedRecommendations = async (userId, limit = 12) => {
     // Step 1: Get user's interaction history
     const userHistory = await getUserHistory(userId);
 
-    if (!userHistory.viewedProducts.length && !userHistory.purchasedProducts.length) {
+    if (
+      !userHistory.viewedProducts.length &&
+      !userHistory.purchasedProducts.length
+    ) {
       // No history - return popular products
       return await getPopularProducts(limit);
     }
@@ -44,7 +47,12 @@ const getPersonalizedRecommendations = async (userId, limit = 12) => {
       Math.ceil(limit * 1.5)
     );
     categoryRecs.forEach((rec) => {
-      addCandidate(candidates, rec.product, rec.score * WEIGHTS.CATEGORY_MATCH, rec.reason);
+      addCandidate(
+        candidates,
+        rec.product,
+        rec.score * WEIGHTS.CATEGORY_MATCH,
+        rec.reason
+      );
     });
 
     // 2b: Tag-based recommendations
@@ -54,7 +62,12 @@ const getPersonalizedRecommendations = async (userId, limit = 12) => {
       Math.ceil(limit * 1.5)
     );
     tagRecs.forEach((rec) => {
-      addCandidate(candidates, rec.product, rec.score * WEIGHTS.TAG_MATCH, rec.reason);
+      addCandidate(
+        candidates,
+        rec.product,
+        rec.score * WEIGHTS.TAG_MATCH,
+        rec.reason
+      );
     });
 
     // 2c: Collaborative filtering - users who bought/viewed X also bought/viewed Y
@@ -66,7 +79,12 @@ const getPersonalizedRecommendations = async (userId, limit = 12) => {
       Math.ceil(limit * 1.5)
     );
     collaborativeRecs.forEach((rec) => {
-      addCandidate(candidates, rec.product, rec.score * WEIGHTS.COLLABORATIVE, rec.reason);
+      addCandidate(
+        candidates,
+        rec.product,
+        rec.score * WEIGHTS.COLLABORATIVE,
+        rec.reason
+      );
     });
 
     // 2d: Similar to purchased products
@@ -76,7 +94,12 @@ const getPersonalizedRecommendations = async (userId, limit = 12) => {
       Math.ceil(limit)
     );
     purchaseBasedRecs.forEach((rec) => {
-      addCandidate(candidates, rec.product, rec.score * WEIGHTS.PURCHASE_BASED, "Similar to your purchases");
+      addCandidate(
+        candidates,
+        rec.product,
+        rec.score * WEIGHTS.PURCHASE_BASED,
+        "Similar to your purchases"
+      );
     });
 
     // 2e: Similar to recently viewed products
@@ -86,7 +109,12 @@ const getPersonalizedRecommendations = async (userId, limit = 12) => {
       Math.ceil(limit)
     );
     viewBasedRecs.forEach((rec) => {
-      addCandidate(candidates, rec.product, rec.score * WEIGHTS.VIEW_BASED, "Based on your interest");
+      addCandidate(
+        candidates,
+        rec.product,
+        rec.score * WEIGHTS.VIEW_BASED,
+        "Based on your interest"
+      );
     });
 
     // Step 3: Sort by score and get top recommendations
@@ -165,13 +193,21 @@ const getUserHistory = async (userId) => {
     .limit(20)
     .select("product");
 
-  const viewedProducts = [...new Set(viewEvents.map((e) => e.product.toString()))];
-  const cartProducts = [...new Set(cartEvents.map((e) => e.product.toString()))];
+  const viewedProducts = [
+    ...new Set(viewEvents.map((e) => e.product.toString())),
+  ];
+  const cartProducts = [
+    ...new Set(cartEvents.map((e) => e.product.toString())),
+  ];
   const uniquePurchased = [...new Set(purchasedProducts)];
-  const allInteractedProducts = [...new Set([...viewedProducts, ...uniquePurchased, ...cartProducts])];
+  const allInteractedProducts = [
+    ...new Set([...viewedProducts, ...uniquePurchased, ...cartProducts]),
+  ];
 
   // Get categories from viewed products
-  const categories = [...new Set(viewEvents.map((e) => e.category).filter(Boolean))];
+  const categories = [
+    ...new Set(viewEvents.map((e) => e.category).filter(Boolean)),
+  ];
 
   // Get tags from interacted products
   const interactedProducts = await Product.find({
@@ -197,7 +233,11 @@ const getUserHistory = async (userId) => {
 /**
  * Get recommendations based on categories user has shown interest in
  */
-const getCategoryBasedRecommendations = async (categories, excludeIds, limit) => {
+const getCategoryBasedRecommendations = async (
+  categories,
+  excludeIds,
+  limit
+) => {
   if (!categories.length) return [];
 
   const products = await Product.find({
@@ -248,14 +288,19 @@ const getCollaborativeRecommendations = async (
   excludeIds,
   limit
 ) => {
-  const interactedProducts = [...viewedProducts.slice(0, 10), ...purchasedProducts.slice(0, 10)];
+  const interactedProducts = [
+    ...viewedProducts.slice(0, 10),
+    ...purchasedProducts.slice(0, 10),
+  ];
   if (!interactedProducts.length) return [];
 
   // Find other users who interacted with the same products
   const similarUsers = await UserEvent.aggregate([
     {
       $match: {
-        product: { $in: interactedProducts.map((id) => new mongoose.Types.ObjectId(id)) },
+        product: {
+          $in: interactedProducts.map((id) => new mongoose.Types.ObjectId(id)),
+        },
         user: { $ne: new mongoose.Types.ObjectId(userId), $exists: true },
         eventType: { $in: ["view", "add_to_cart", "purchase"] },
       },
@@ -337,7 +382,11 @@ const getSimilarToProducts = async (productIds, excludeIds, limit) => {
       $match: {
         _id: { $nin: excludeIds.map((id) => new mongoose.Types.ObjectId(id)) },
         status: "active",
-        $or: [{ category: { $in: categories } }, { tags: { $in: tags } }, { vendor: { $in: vendors } }],
+        $or: [
+          { category: { $in: categories } },
+          { tags: { $in: tags } },
+          { vendor: { $in: vendors } },
+        ],
       },
     },
     {
@@ -347,7 +396,11 @@ const getSimilarToProducts = async (productIds, excludeIds, limit) => {
             { $cond: [{ $in: ["$category", categories] }, 3, 0] },
             {
               $multiply: [
-                { $size: { $setIntersection: [{ $ifNull: ["$tags", []] }, tags] } },
+                {
+                  $size: {
+                    $setIntersection: [{ $ifNull: ["$tags", []] }, tags],
+                  },
+                },
                 1,
               ],
             },
@@ -387,14 +440,22 @@ const getPopularProducts = async (limit = 12) => {
       $group: {
         _id: "$product",
         viewCount: { $sum: { $cond: [{ $eq: ["$eventType", "view"] }, 1, 0] } },
-        cartCount: { $sum: { $cond: [{ $eq: ["$eventType", "add_to_cart"] }, 1, 0] } },
-        purchaseCount: { $sum: { $cond: [{ $eq: ["$eventType", "purchase"] }, 1, 0] } },
+        cartCount: {
+          $sum: { $cond: [{ $eq: ["$eventType", "add_to_cart"] }, 1, 0] },
+        },
+        purchaseCount: {
+          $sum: { $cond: [{ $eq: ["$eventType", "purchase"] }, 1, 0] },
+        },
       },
     },
     {
       $addFields: {
         trendScore: {
-          $add: ["$viewCount", { $multiply: ["$cartCount", 3] }, { $multiply: ["$purchaseCount", 5] }],
+          $add: [
+            "$viewCount",
+            { $multiply: ["$cartCount", 3] },
+            { $multiply: ["$purchaseCount", 5] },
+          ],
         },
       },
     },
@@ -424,7 +485,9 @@ const getPopularProducts = async (limit = 12) => {
   }
 
   // Create score map from aggregation
-  const scoreMap = new Map(trendingProducts.map((p) => [p._id.toString(), p.trendScore]));
+  const scoreMap = new Map(
+    trendingProducts.map((p) => [p._id.toString(), p.trendScore])
+  );
 
   return products.slice(0, limit).map((product) => ({
     product,
@@ -459,7 +522,17 @@ const getSeasonalProducts = async (limit = 12) => {
     keywords = ["autumn", "fall", "harvest", "warm"];
   } else {
     season = "Winter";
-    keywords = ["winter", "wool", "sweater", "warm", "hot", "tea", "blanket", "jacket", "cozy"];
+    keywords = [
+      "winter",
+      "wool",
+      "sweater",
+      "warm",
+      "hot",
+      "tea",
+      "blanket",
+      "jacket",
+      "cozy",
+    ];
   }
 
   // Search products matching seasonal keywords
