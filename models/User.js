@@ -38,7 +38,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    default: null,
+    // No default - field should not exist for non-Google users
   },
   authProvider: {
     type: String,

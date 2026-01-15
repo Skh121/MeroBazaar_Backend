@@ -1,6 +1,9 @@
 const asyncHandler = require("express-async-handler");
 const Settings = require("../models/Settings");
-const { sendDailyReport, sendWeeklyReport } = require("../services/reportService");
+const {
+  sendDailyReport,
+  sendWeeklyReport,
+} = require("../services/reportService");
 
 // @desc    Get admin settings
 // @route   GET /api/settings
@@ -43,10 +46,13 @@ const updateNotificationSettings = asyncHandler(async (req, res) => {
   // Update notification preferences
   settings.notifications = {
     emailOnNewOrder: emailOnNewOrder ?? settings.notifications.emailOnNewOrder,
-    emailOnNewVendor: emailOnNewVendor ?? settings.notifications.emailOnNewVendor,
-    emailOnNewCustomer: emailOnNewCustomer ?? settings.notifications.emailOnNewCustomer,
+    emailOnNewVendor:
+      emailOnNewVendor ?? settings.notifications.emailOnNewVendor,
+    emailOnNewCustomer:
+      emailOnNewCustomer ?? settings.notifications.emailOnNewCustomer,
     emailOnLowStock: emailOnLowStock ?? settings.notifications.emailOnLowStock,
-    emailOnContactMessage: emailOnContactMessage ?? settings.notifications.emailOnContactMessage,
+    emailOnContactMessage:
+      emailOnContactMessage ?? settings.notifications.emailOnContactMessage,
     dailyReport: dailyReport ?? settings.notifications.dailyReport,
     weeklyReport: weeklyReport ?? settings.notifications.weeklyReport,
   };

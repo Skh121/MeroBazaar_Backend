@@ -1,7 +1,7 @@
-const { sendDailyReport, sendWeeklyReport } = require("../services/reportService");
-
-// Simple scheduler using setInterval
-// For production, consider using node-cron package
+const {
+  sendDailyReport,
+  sendWeeklyReport,
+} = require("../services/reportService");
 
 class Scheduler {
   constructor() {
@@ -41,7 +41,11 @@ class Scheduler {
     const runDaily = () => {
       const msUntilNext = this.getTimeUntilNext(6, 0); // 6:00 AM
 
-      console.log(`Daily report scheduled for: ${new Date(Date.now() + msUntilNext).toLocaleString()}`);
+      console.log(
+        `Daily report scheduled for: ${new Date(
+          Date.now() + msUntilNext
+        ).toLocaleString()}`
+      );
 
       setTimeout(async () => {
         console.log("Running daily report job...");
@@ -59,7 +63,11 @@ class Scheduler {
     const runWeekly = () => {
       const msUntilNext = this.getTimeUntilNext(7, 0, 1); // 7:00 AM on Monday (1 = Monday)
 
-      console.log(`Weekly report scheduled for: ${new Date(Date.now() + msUntilNext).toLocaleString()}`);
+      console.log(
+        `Weekly report scheduled for: ${new Date(
+          Date.now() + msUntilNext
+        ).toLocaleString()}`
+      );
 
       setTimeout(async () => {
         console.log("Running weekly report job...");
