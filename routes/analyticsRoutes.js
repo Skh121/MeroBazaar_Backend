@@ -20,6 +20,11 @@ const {
   getVendorCustomerSegments,
   getVendorDemandForecasts,
   getVendorPricingSuggestions,
+  // Admin-specific analytics
+  getAdminDashboardStats,
+  getAdminCustomerSegments,
+  getAdminDemandForecasts,
+  getAdminPricingSuggestions,
 } = require("../controllers/analyticsController");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 const { protectVendor } = require("../middleware/authMiddleware");
@@ -66,5 +71,11 @@ router.get(
   protectVendor,
   getVendorPricingSuggestions
 );
+
+// ============ ADMIN-SPECIFIC ROUTES (Dynamic from Orders) ============
+router.get("/admin/stats", protect, adminOnly, getAdminDashboardStats);
+router.get("/admin/segments", protect, adminOnly, getAdminCustomerSegments);
+router.get("/admin/forecasts", protect, adminOnly, getAdminDemandForecasts);
+router.get("/admin/pricing", protect, adminOnly, getAdminPricingSuggestions);
 
 module.exports = router;

@@ -52,11 +52,14 @@ const initiateEsewaPayment = asyncHandler(async (req, res) => {
   await order.save();
 
   // eSewa requires: total_amount = amount + tax_amount + product_service_charge + product_delivery_charge
-  const amount = order.subtotal; // Base product amount
-  const taxAmount = order.tax;
+  // Round all amounts to 2 decimal places to avoid floating-point precision issues
+  const amount = Math.round(order.subtotal * 100) / 100;
+  const taxAmount = Math.round(order.tax * 100) / 100;
   const serviceCharge = 0;
-  const deliveryCharge = order.shippingCost;
-  const totalAmount = amount + taxAmount + serviceCharge + deliveryCharge;
+  const deliveryCharge = Math.round(order.shippingCost * 100) / 100;
+  const totalAmount =
+    Math.round((amount + taxAmount + serviceCharge + deliveryCharge) * 100) /
+    100;
 
   // Prepare signature message
   // Format: total_amount=X,transaction_uuid=Y,product_code=Z

@@ -49,14 +49,15 @@ const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  // Calculate totals
-  const subtotal = orderItems.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
+  // Calculate totals (round to 2 decimal places to avoid floating-point precision issues)
+  const subtotal =
+    Math.round(
+      orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0) *
+        100
+    ) / 100;
   const shippingCost = subtotal >= 1000 ? 0 : 100; // Free shipping over Rs.1000
-  const tax = Math.round(subtotal * 0.05); // 5% tax
-  const total = subtotal + shippingCost + tax;
+  const tax = Math.round(subtotal * 0.05 * 100) / 100; // 5% tax
+  const total = Math.round((subtotal + shippingCost + tax) * 100) / 100;
 
   // Generate order number
   const randomStr = Math.random().toString(36).substring(2, 10).toUpperCase();
